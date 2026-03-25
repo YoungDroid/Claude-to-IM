@@ -207,10 +207,39 @@ restart_bridge() {
   local bridge_pid
   bridge_pid=$(read_pid "$BRIDGE_PID_FILE")
   if [ -n "$bridge_pid" ]; then
-    # Kill the entire process group to catch the actual daemon and any wrappers
-    kill -9 -"$bridge_pid" 2>/dev/null || true
-    # Also try direct kill in case PID file had the setsid wrapper
-    kill -9 "$bridge_pid" 2>/dev/null || true
+    # Step 1: SIGTERM first (allow graceful shutdown — SDK abort handlers run)
+    # Use process group kill to cover all children of the bridge
+    kill -TERM -"$bridge_pid" 2>/dev/null || true
+    kill -TERM "$bridge_pid" 2>/dev/null || true
+
+    # Wait up to 5s for graceful exit
+    for i in $(seq 1 5); do
+      if ! kill -0 "$bridge_pid" 2>/dev/null; then
+        break
+      fi
+      sleep 1
+    done
+
+    # Step 2: SIGKILL if still alive (force kill after grace period)
+    if kill -0 "$bridge_pid" 2>/dev/null; then
+      kill -9 -"$bridge_pid" 2>/dev/null || true
+      kill -9 "$bridge_pid" 2>/dev/null || true
+    fi
+
+    # Step 3: Clean up orphaned claude processes that got reparented to init (PPID=1)
+    # These are claude CLI processes that were children of the bridge daemon.
+    # We identify them by: PPID=1 (reparented after hard kill) + no controlling TTY
+    # This avoids killing the user's own claude sessions which have a TTY.
+    for pid in $(pgrep -x claude 2>/dev/null || true); do
+      local pppid
+      pppid=$(ps -o ppid= -p "$pid" 2>/dev/null | tr -d ' ' || echo "1")
+      local tty
+      tty=$(ps -o tty= -p "$pid" 2>/dev/null | tr -d ' ' || echo "?")
+      # Only kill if: reparented to init (PPID=1) and no TTY (not a user session)
+      if [ "$pppid" = "1" ] && [ "$tty" = "?" ]; then
+        kill -9 "$pid" 2>/dev/null || true
+      fi
+    done
   fi
   rm -f "$BRIDGE_PID_FILE" "$STATUS_FILE" 2>/dev/null || true
 
