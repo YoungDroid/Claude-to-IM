@@ -2,7 +2,7 @@
 
 Bridge Claude Code / Codex to IM platforms — chat with AI coding agents from Telegram, Discord, Feishu/Lark, or QQ.
 
-> **基于 [op7418/claude-to-IM](https://github.com/op7418/claude-to-im)（官方，已停止维护）二开。**
+> **基于 [op7418/claude-to-IM](https://github.com/op7418/claude-to-im)（官方）魔改。**
 > 原项目地址：[github.com/op7418/claude-to-im](https://github.com/op7418/claude-to-im)
 >
 > 本仓库为活跃维护版本，持续更新中。
