@@ -2,20 +2,19 @@
 
 Bridge Claude Code / Codex to IM platforms — chat with AI coding agents from Telegram, Discord, Feishu/Lark, or QQ.
 
-> **基于 [op7418/claude-to-IM](https://github.com/op7418/claude-to-im)（官方）魔改。**
-> 原项目地址：[github.com/op7418/claude-to-im](https://github.com/op7418/claude-to-im)
->
-> 本仓库为活跃维护版本，持续更新中。
-
 [中文文档](README_CN.md)
 
 ---
 
-## 新增功能 / New Features
+## New Features
 
-- **`/clear`** — 清空当前会话上下文，重新开始对话
-- **`/compact`** — 触发 Claude CLI 上下文压缩
-- **飞书停止按钮** — Streaming card 右下角 ⏹ 停止按钮，可随时中断正在执行的任务
+- **`/clear`** — Clear current session context and start fresh
+- **`/compact`** — Trigger Claude CLI context compression
+- **`/stop`** — Interrupt the currently running task
+- **Streaming output** — Real-time response preview on Feishu, Telegram, Discord
+- **Permission control** — Inline approve/deny buttons for tool calls (Feishu, Telegram, Discord)
+- **PDF recognition** — Upload PDF files directly in chat for analysis
+- **Permission skip** — Use `/perm allow <id>` to pre-approve or skip specific tool calls
 
 ---
 
@@ -35,8 +34,9 @@ Claude Code / Codex → reads/writes your codebase
 
 - **Four IM platforms** — Telegram, Discord, Feishu/Lark, QQ — enable any combination
 - **Interactive setup** — guided wizard collects tokens with step-by-step instructions
-- **Permission control** — tool calls require explicit approval via inline buttons (Telegram/Discord) or text `/perm` commands (Feishu/QQ)
-- **Streaming preview** — see Claude's response as it types (Telegram & Discord)
+- **Streaming preview** — see Claude's response as it types (Feishu, Telegram & Discord)
+- **Permission control** — tool calls require explicit approval via inline buttons (Feishu/Telegram/Discord) or text `/perm` commands (QQ)
+- **PDF recognition** — upload PDF files directly in chat for analysis
 - **Session persistence** — conversations survive daemon restarts
 - **Secret protection** — tokens stored with `chmod 600`, auto-redacted in all logs
 - **Watchdog daemon** — auto-restart bridge on crash/hang

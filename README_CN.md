@@ -4,18 +4,17 @@
 
 [English](README.md)
 
-> **基于 [op7418/claude-to-IM](https://github.com/op7418/claude-to-im)（官方，已停止维护）二开。**
-> 原项目地址：[github.com/op7418/claude-to-im](https://github.com/op7418/claude-to-im)
->
-> 本仓库为活跃维护版本，持续更新中。
-
 ---
 
 ## 新增功能
 
 - **`/clear`** — 清空当前会话上下文，重新开始对话
 - **`/compact`** — 触发 Claude CLI 上下文压缩
-- **飞书停止按钮** — Streaming card 右下角 ⏹ 停止按钮，可随时中断正在执行的任务
+- **`/stop`** — 中断当前正在执行的任务
+- **流式输出** — 飞书、Telegram、Discord 实时预览 AI 回复
+- **权限控制** — 工具调用内联审批按钮（飞书、Telegram、Discord）
+- **PDF 识别** — 直接在对话中上传 PDF 文件进行分析
+- **权限跳过** — 使用 `/perm allow <id>` 预先批准或跳过特定工具调用
 
 ---
 
@@ -35,8 +34,9 @@ Claude Code / Codex → 读写你的代码库
 
 - **四大 IM 平台** — Telegram、Discord、飞书、QQ，可任意组合启用
 - **交互式配置** — 引导式向导逐步收集 token，附带详细获取说明
-- **权限控制** — 工具调用需要在聊天中通过内联按钮或 `/perm` 命令批准
 - **流式预览** — 实时查看 Claude 的输出（飞书卡片、Telegram、Discord 支持）
+- **权限控制** — 工具调用需要在聊天中通过内联按钮或 `/perm` 命令批准
+- **PDF 识别** — 直接在对话中上传 PDF 文件进行分析
 - **会话持久化** — 对话在守护进程重启后保留
 - **密钥保护** — token 以 `chmod 600` 存储，日志中自动脱敏
 - **Watchdog 守护** — 进程崩溃或卡死时自动重启
