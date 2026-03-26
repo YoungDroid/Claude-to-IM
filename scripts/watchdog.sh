@@ -119,6 +119,42 @@ check_websocket_timeout() {
   return 1
 }
 
+# Kill Claude CLI processes that are children of the bridge daemon.
+# This avoids killing user's own claude sessions (which have a controlling TTY).
+kill_stuck_cli_processes() {
+  local bridge_pid
+  bridge_pid=$(read_pid "$BRIDGE_PID_FILE")
+
+  if [ -z "$bridge_pid" ]; then
+    log "kill_stuck_cli_processes: no bridge PID found"
+    return
+  fi
+
+  if ! pid_alive "$bridge_pid"; then
+    log "kill_stuck_cli_processes: bridge PID $bridge_pid is not alive"
+    return
+  fi
+
+  log "Killing stuck Claude CLI processes with PPID=$bridge_pid"
+
+  # Find all processes with PPID = bridge_pid and cmd contains "claude"
+  # Use ps to get PID, PPID, TTY, CMD
+  while IFS= read -r line; do
+    [ -z "$line" ] && continue
+    local pid ppid tty cmd
+    # shellcheck disable=SC2086
+    set -- $line
+    pid="$1"; ppid="$2"; tty="$3"; shift 3; cmd="$*"
+
+    # Skip processes without a controlling TTY (these are bridge children)
+    # but allow killing them since they're stuck CLI sessions
+    if [ "$ppid" = "$bridge_pid" ] && [[ "$cmd" == *claude* ]]; then
+      log "Killing stuck claude process: PID=$pid, cmd=$cmd"
+      kill -9 "$pid" 2>/dev/null || true
+    fi
+  done < <(ps -eo pid,ppid,tty,cmd --no-headers 2>/dev/null || true)
+}
+
 run_deep_health_check() {
   if ! [ -f "$HEALTH_CHECK_SCRIPT" ]; then
     log "Deep health check script not found: $HEALTH_CHECK_SCRIPT"
@@ -139,7 +175,7 @@ run_deep_health_check() {
       ;;
     *CLI_UNRESPONSIVE*)
       log "Claude CLI is unresponsive — killing stuck CLI processes"
-      pkill -f "claude.*agent" 2>/dev/null || true
+      kill_stuck_cli_processes
       sleep 2
       return 0
       ;;

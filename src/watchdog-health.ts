@@ -92,10 +92,101 @@ function checkStuckStreamingCard(): boolean {
 }
 
 /**
- * Check Claude CLI responsiveness.
+ * Check for stuck Claude CLI sessions.
  *
- * Runs `claude --version` with a short timeout. If it fails or times out,
- * the CLI is hung (e.g., waiting for auth, blocked by a hanging subprocess).
+ * Detects Claude CLI processes that are children of the bridge daemon and have
+ * been running longer than the stream timeout threshold. These are sessions that
+ * appear to be hung (waiting for input, blocked on API call, etc.).
+ */
+function checkStuckCliSessions(): boolean {
+  const CTI_HOME = process.env.CTIM_HOME || path.join(os.homedir(), '.claude-to-im');
+  const BRIDGE_PID_FILE = path.join(CTI_HOME, 'runtime', 'bridge.pid');
+  const STUCK_THRESHOLD_MS = STREAM_TIMEOUT_MS;
+
+  let bridgePid: string | null = null;
+  try {
+    if (fs.existsSync(BRIDGE_PID_FILE)) {
+      bridgePid = fs.readFileSync(BRIDGE_PID_FILE, 'utf-8').trim();
+    }
+  } catch {
+    // Can't read bridge PID file, skip child process check
+  }
+
+  if (!bridgePid) {
+    return false;
+  }
+
+  try {
+    // Get all Claude CLI processes
+    const output = execSync('ps -eo pid,ppid,etime,cmd --no-headers 2>/dev/null || true', {
+      encoding: 'utf-8',
+      timeout: 5000,
+    });
+
+    const lines = output.trim().split('\n');
+    const now = Date.now();
+    let hasStuckProcess = false;
+
+    for (const line of lines) {
+      if (!line.includes('claude')) continue;
+
+      // Parse: PID PPID ELAPSED CMD
+      const parts = line.trim().split(/\s+/);
+      if (parts.length < 4) continue;
+
+      const pid = parts[0];
+      const ppid = parts[1];
+      const elapsed = parts[2]; // format: [[dd-]hh:]mm:ss
+      const cmd = parts.slice(3).join(' ');
+
+      // Only check processes that are children of the bridge daemon
+      if (ppid !== bridgePid) continue;
+
+      // Skip the watchdog's own probe process
+      if (cmd.includes('watchdog-health')) continue;
+
+      // Parse elapsed time to milliseconds
+      const elapsedMs = parseElapsedTime(elapsed);
+      if (elapsedMs > STUCK_THRESHOLD_MS) {
+        console.warn(`[watchdog-health] Stuck Claude CLI detected: PID=${pid}, elapsed=${elapsed}, cmd=${cmd.substring(0, 60)}`);
+        hasStuckProcess = true;
+      }
+    }
+
+    return hasStuckProcess;
+  } catch (err) {
+    console.warn('[watchdog-health] Error checking stuck CLI sessions:', err);
+    return false;
+  }
+}
+
+/**
+ * Parse ps etime format to milliseconds.
+ * Format: [[dd-]hh:]mm:ss
+ */
+function parseElapsedTime(etime: string): number {
+  const parts = etime.split(':').map(Number);
+  if (parts.length === 3) {
+    // mm:ss — minutes and seconds
+    return (parts[0] * 60 + parts[1]) * 1000;
+  } else if (parts.length === 2) {
+    // hh:mm:ss — hours, minutes, seconds
+    return ((parts[0] * 60 + parts[1]) * 60 + parts[2]) * 1000;
+  } else if (etime.includes('-')) {
+    // dd-hh:mm:ss — days, hours, minutes, seconds
+    const [dd, timePart] = etime.split('-');
+    const [hh, mm, ss] = timePart.split(':').map(Number);
+    return ((parseInt(dd, 10) * 24 + hh) * 60 + mm) * 60 * 1000 + ss * 1000;
+  }
+  return 0;
+}
+
+/**
+ * Check Claude CLI responsiveness (legacy check).
+ *
+ * Runs `claude --version` with a short timeout. This catches cases where
+ * the CLI binary itself is broken. Combined with checkStuckCliSessions()
+ * which catches hung sessions.
  */
 function checkCliResponsive(): boolean {
   const cliPath = process.env.CTI_CLAUDE_CODE_EXECUTABLE || 'claude';
@@ -127,7 +218,12 @@ async function main(): Promise<void> {
     needsRestart = true;
   }
 
-  if (checkCliResponsive()) {
+  // Check for stuck Claude CLI sessions first (more accurate than --version probe)
+  if (checkStuckCliSessions()) {
+    process.stdout.write('CLI_UNRESPONSIVE\n');
+    needsRestart = true;
+  } else if (checkCliResponsive()) {
+    // Only check --version if no stuck sessions found (legacy fallback)
     process.stdout.write('CLI_UNRESPONSIVE\n');
     needsRestart = true;
   }
