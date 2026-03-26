@@ -59,7 +59,14 @@ interface FeishuCardState {
   pendingText: string | null;
   lastUpdateAt: number;
   throttleTimer: ReturnType<typeof setTimeout> | null;
+  /** Completed text blocks (for text boundary detection — rolling history) */
+  streamingPrefix: string;
+  /** Previous text length to detect when text shrinks (new reply started) */
+  lastTextLength: number;
 }
+
+/** Max number of completed text blocks to keep in streamingPrefix */
+const MAX_PREFIX_BLOCKS = 5;
 
 /** Streaming card throttle interval (ms). */
 const CARD_THROTTLE_MS = 200;
@@ -157,7 +164,7 @@ export class FeishuAdapter extends BaseChannelAdapter {
           headers: { 'Content-Type': 'application/json' },
           body: JSON.stringify({ app_id: appId, app_secret: appSecret }),
         });
-        const data = await res.json();
+        const data = (await res.json()) as { tenant_access_token?: string };
         _tenantAccessToken = data?.tenant_access_token || '';
       } catch (err) {
         console.warn('[feishu-adapter] getToken failed:', err instanceof Error ? err.message : err);
@@ -527,6 +534,8 @@ export class FeishuAdapter extends BaseChannelAdapter {
         pendingText: null,
         lastUpdateAt: 0,
         throttleTimer: null,
+        streamingPrefix: '',
+        lastTextLength: 0,
       });
 
       console.log(`[feishu-adapter] Streaming card created: cardId=${cardId}, msgId=${messageId}`);
@@ -691,6 +700,8 @@ export class FeishuAdapter extends BaseChannelAdapter {
   /**
    * Called by bridge-manager on each text SSE event.
    * Creates streaming card on first call, then updates content.
+   * Implements text boundary detection: when text shrinks, previous content
+   * is moved to streamingPrefix (rolling history).
    */
   onStreamText(chatId: string, fullText: string): void {
     if (!this.activeCards.has(chatId)) {
@@ -701,7 +712,31 @@ export class FeishuAdapter extends BaseChannelAdapter {
       }).catch(() => {});
       return;
     }
-    this.updateCardContent(chatId, fullText);
+
+    const state = this.activeCards.get(chatId)!;
+
+    // Text boundary detection: when text shrinks, a new reply has started
+    // Move the previous text to streamingPrefix
+    if (state.lastTextLength > 0 && fullText.length < state.lastTextLength) {
+      // Previous text completed — add to prefix
+      if (state.pendingText) {
+        const prefixBlocks = state.streamingPrefix ? state.streamingPrefix.split('\n\n---\n\n') : [];
+        prefixBlocks.push(state.pendingText);
+        // Keep only the most recent N blocks
+        if (prefixBlocks.length > MAX_PREFIX_BLOCKS) {
+          state.streamingPrefix = prefixBlocks.slice(-MAX_PREFIX_BLOCKS).join('\n\n---\n\n');
+        } else {
+          state.streamingPrefix = prefixBlocks.join('\n\n---\n\n');
+        }
+      }
+    }
+
+    state.lastTextLength = fullText.length;
+    state.pendingText = state.streamingPrefix
+      ? state.streamingPrefix + '\n\n---\n\n' + fullText
+      : fullText;
+
+    this.updateCardContent(chatId, state.pendingText);
   }
 
   onToolEvent(chatId: string, tools: ToolCallInfo[]): void {

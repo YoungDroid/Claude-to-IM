@@ -671,9 +671,117 @@ async function handleMessage(
     try { adapter.onStreamText!(msg.address.chatId, fullText); } catch { /* non-critical */ }
   } : undefined;
 
-  const onToolEvent = hasStreamingCards ? (toolId: string, toolName: string, status: 'running' | 'complete' | 'error') => {
+  /**
+   * Extract a short human-readable summary from tool input.
+   * Used to show what a tool is doing in streaming card progress.
+   */
+  const extractInputSummary = (toolName: string, input: unknown): string | undefined => {
+    if (!input || typeof input !== 'object') return undefined;
+    const inp = input as Record<string, unknown>;
+    switch (toolName) {
+      case 'Write': {
+        const fp = inp.file_path;
+        const content = inp.content;
+        if (typeof content === 'string') {
+          const chars = content.length;
+          const path = typeof fp === 'string' ? fp : 'file';
+          const name = path.split('/').pop() || path;
+          return `${name} (${chars} chars)`;
+        }
+        return undefined;
+      }
+      case 'Bash': {
+        const cmd = inp.command || inp.cmd || '';
+        if (typeof cmd === 'string') {
+          return cmd.length > 60 ? cmd.slice(0, 60) + '...' : cmd;
+        }
+        return undefined;
+      }
+      case 'Read': {
+        const fp = inp.file_path || inp.path;
+        if (typeof fp === 'string') {
+          const name = fp.split('/').pop() || fp;
+          return name;
+        }
+        return undefined;
+      }
+      case 'Edit': {
+        const fp = inp.file_path || inp.path;
+        if (typeof fp === 'string') {
+          const name = fp.split('/').pop() || fp;
+          return name;
+        }
+        return undefined;
+      }
+      case 'web_fetch':
+      case 'WebFetch': {
+        const url = inp.url || inp.uri || '';
+        if (typeof url === 'string') {
+          try {
+            const u = new URL(url);
+            return u.hostname + u.pathname;
+          } catch {
+            return url.length > 50 ? url.slice(0, 50) + '...' : url;
+          }
+        }
+        return undefined;
+      }
+      case 'web_search':
+      case 'WebSearch': {
+        const q = inp.query || inp.q || inp.term || '';
+        if (typeof q === 'string') {
+          return `"${q.length > 40 ? q.slice(0, 40) + '...' : q}"`;
+        }
+        return undefined;
+      }
+      case 'Grep': {
+        const pattern = inp.pattern || inp.regex || '';
+        const fp = inp.file_path || inp.path || '';
+        if (typeof pattern === 'string') {
+          const name = typeof fp === 'string' ? fp.split('/').pop() || fp : '';
+          return name ? `"${pattern}" in ${name}` : `"${pattern}"`;
+        }
+        return undefined;
+      }
+      case 'Glob': {
+        const pattern = inp.pattern || inp.glob || '';
+        if (typeof pattern === 'string') {
+          return pattern;
+        }
+        return undefined;
+      }
+      case 'NotebookEdit': {
+        const fp = inp.notebook_path || inp.file_path || '';
+        if (typeof fp === 'string') {
+          const name = fp.split('/').pop() || fp;
+          return name;
+        }
+        return undefined;
+      }
+      case 'TodoWriteTask': {
+        const content = inp.content || inp.text || '';
+        if (typeof content === 'string') {
+          return content.length > 40 ? content.slice(0, 40) + '...' : content;
+        }
+        return undefined;
+      }
+      default: {
+        // Try to extract something useful from any tool
+        // MCP tools: mcp__server__tool → show just "tool"
+        if (typeof toolName === 'string' && toolName.startsWith('mcp__')) {
+          const parts = toolName.split('__');
+          if (parts.length >= 3) return parts[2];
+        }
+        // Fallback: show the tool name
+        return undefined;
+      }
+    }  // ← closes switch
+  };  // ← closes extractInputSummary arrow function
+
+  const onToolEvent = hasStreamingCards ? (toolId: string, toolName: string, status: 'running' | 'complete' | 'error', input?: unknown) => {
     if (toolName) {
-      toolCallTracker.set(toolId, { id: toolId, name: toolName, status });
+      const summary = extractInputSummary(toolName, input);
+      toolCallTracker.set(toolId, { id: toolId, name: toolName, status, inputSummary: summary });
     } else {
       // tool_result doesn't carry name — update existing entry's status
       const existing = toolCallTracker.get(toolId);

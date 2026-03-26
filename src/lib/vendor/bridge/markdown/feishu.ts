@@ -91,16 +91,35 @@ export function htmlToFeishuMarkdown(html: string): string {
     .trim();
 }
 
+/** Max tool calls to show in streaming card progress */
+const MAX_TOOL_CALLS_SHOWN = 8;
+
 /**
  * Build tool progress markdown lines.
  * Each tool shows an icon based on status: 🔄 Running, ✅ Complete, ❌ Error.
+ * When inputSummary is available, displays it too: ✅ Write → fetch.py
+ *
+ * Display is stable: shows the last N tools by insertion order.
+ * Once a tool enters the shown window, it stays until scrolled off by newer tools.
+ * This prevents flickering when running tools complete and shift the slice window.
  */
 export function buildToolProgressMarkdown(tools: ToolCallInfo[]): string {
   if (tools.length === 0) return '';
-  const lines = tools.map((tc) => {
+
+  // Show last N tools by insertion order (stable — no flickering on status changes)
+  const shown = tools.slice(-MAX_TOOL_CALLS_SHOWN);
+
+  const lines = shown.map((tc) => {
     const icon = tc.status === 'running' ? '🔄' : tc.status === 'complete' ? '✅' : '❌';
-    return `${icon} \`${tc.name}\``;
+    const summary = tc.inputSummary ? ` → ${tc.inputSummary}` : '';
+    return `${icon} \`${tc.name}\`${summary}`;
   });
+
+  const omitted = tools.length - shown.length;
+  if (omitted > 0) {
+    lines.push(`... ${omitted} more tools`);
+  }
+
   return lines.join('\n');
 }
 

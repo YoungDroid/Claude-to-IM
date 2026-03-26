@@ -174,6 +174,8 @@ export interface ToolCallInfo {
   id: string;
   name: string;
   status: 'running' | 'complete' | 'error';
+  /** Short summary of the tool input, e.g. "fetch.py (200 chars)" or "npm install" */
+  inputSummary?: string;
 }
 
 // ── Config ─────────────────────────────────────────────────────

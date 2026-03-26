@@ -164,6 +164,7 @@ export interface BridgeStore {
   // ── Messages ──
   addMessage(sessionId: string, role: string, content: string, usage?: string | null): void;
   getMessages(sessionId: string, opts?: { limit?: number }): { messages: BridgeMessage[] };
+  clearMessages?(sessionId: string): void;
 
   // ── Session locking ──
   acquireSessionLock(sessionId: string, lockId: string, owner: string, ttlSecs: number): boolean;
